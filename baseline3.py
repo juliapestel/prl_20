@@ -70,6 +70,92 @@ weekday_hour_mean = (
 
 dayofyear_mean = train_long.groupby("DayOfYear")["Price"].mean()
 
+
+plt.figure(figsize=(12, 6))
+weekday_hour_mean.T.plot(ax=plt.gca())
+plt.xlabel("Hour of day")
+plt.ylabel("Mean price (EUR/MWh)")
+plt.title("Hourly mean price by weekday (train)")
+plt.legend(
+    ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    title="Weekday"
+)
+plt.tight_layout()
+plt.savefig(os.path.join(IMG_DIR, "hourly_mean_by_weekday.png"))
+plt.close()
+
+# ===============================
+# Mean price by day of year
+# ===============================
+dayofyear_mean = (
+    train_long
+    .groupby("DayOfYear")["Price"]
+    .mean()
+)
+
+plt.figure(figsize=(12, 4))
+plt.plot(dayofyear_mean.index, dayofyear_mean.values)
+plt.xlabel("Day of year")
+plt.ylabel("Mean price (EUR/MWh)")
+plt.title("Mean price by day of year (train)")
+plt.tight_layout()
+plt.savefig(os.path.join(IMG_DIR, "mean_price_day_of_year.png"))
+plt.close()
+
+# ===============================
+# Heatmap weekday x hour
+# ===============================
+plt.figure(figsize=(10, 5))
+sns.heatmap(
+    weekday_hour_mean,
+    cmap="viridis",
+    xticklabels=range(24),
+    yticklabels=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+)
+plt.xlabel("Hour of day")
+plt.ylabel("Weekday")
+plt.title("Mean price heatmap (weekday x hour, train)")
+plt.tight_layout()
+plt.savefig(os.path.join(IMG_DIR, "heatmap_weekday_hour.png"))
+plt.close()
+
+# ===============================
+# Expected price tables
+# ===============================
+expected_price_wh = weekday_hour_mean
+expected_price_doy = dayofyear_mean
+
+# ============================================================
+# Mean price by month (TRAIN)
+# ============================================================
+
+train_long["Month"] = train_long["Date"].dt.month
+
+month_mean = (
+    train_long
+    .groupby("Month")["Price"]
+    .mean()
+)
+
+plt.figure(figsize=(10, 4))
+plt.plot(
+    month_mean.index,
+    month_mean.values,
+    marker="o"
+)
+plt.xticks(
+    ticks=range(1, 13),
+    labels=["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+)
+plt.xlabel("Month")
+plt.ylabel("Mean price (EUR/MWh)")
+plt.title("Mean electricity price by month (train)")
+plt.tight_layout()
+plt.savefig(os.path.join(IMG_DIR, "mean_price_by_month.png"))
+plt.close()
+
+
 # ============================================================
 # BASELINE WITH FIXES (DEADBAND + STORAGE AWARE)
 # ============================================================
