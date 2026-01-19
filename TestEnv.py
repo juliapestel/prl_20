@@ -4,7 +4,6 @@ import pandas as pd
 
 class HydroElectric_Test(gym.Env):
 
-
     def __init__(self, path_to_test_data:str):
         # Define a discrete action space, -1 0 or 1
         self.discrete_action_space = gym.spaces.Discrete(3)

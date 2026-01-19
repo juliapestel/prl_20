@@ -1,124 +1,143 @@
-import pandas as pd
-import numpy as np
 import os
-import matplotlib as plt
+import numpy as np
+import pandas as pd
 
-df = pd.read_excel("train.xlsx")
-
-# start reservoir in m3 (half full)
-startreservoir = 50_000
-
-def potential_energy(volume_m3, g=9.81, h=30):
-    m_kg = volume_m3 * 1000
-    u = m_kg * g * h
-    return u  # joule
-
-# reservoir limits
-max_volume = 100_000
-max_energy = potential_energy(max_volume)
-reservoir_energy = potential_energy(startreservoir)
-
-# energy per hour limits (turbine + pump)
-def calculate_per_hour(g=9.81, h=30):
-    flow_m3_per_hour = 5 * 3600
-    energy_per_m3 = 1000 * g * h
-    hydro_energy_per_hour = flow_m3_per_hour * energy_per_m3
-
-    production = hydro_energy_per_hour * 0.9   # turbine efficiency
-    pumping = hydro_energy_per_hour / 0.8      # pump efficiency
-
-    return production, pumping
-
-max_prod_j, max_pump_j = calculate_per_hour()
-
-def j_to_mwh(j):
-    return j / 3.6e9
-
-# baseline control parameters
-lookback_days = 30
-low_q = 0.3
-high_q = 0.7
-
-profit = 0.0
-price_history = []
-
-reservoir_trace = []
-profit_trace = []
-price_trace = []
-time_trace = []
-t = 0
+from TestEnv import HydroElectric_Test
+from helpers.obs_utils import parse_observation
+from helpers.eval_utils import evaluate_policy
+from helpers.plot_functions import (
+    plot_cumulative_profit,
+    plot_dam_level,
+    plot_action_vs_price,
+    plot_mean_action_by_hour
+)
 
 
-for day in range(len(df)):
-    for hour in range(1, 25):
-        price = df.loc[day, f"Hour {hour:02d}"]
-        price_history.append(price)
+ALGO_NAME = "baseline"
+IMG_ROOT = "img"
+IMG_DIR = os.path.join(IMG_ROOT, ALGO_NAME)
 
-        # wait until enough history is available
-        if len(price_history) < 24 * lookback_days:
-            continue
+UPPER_MARGIN = 1.08
+LOWER_MARGIN = 0.92
 
-        recent_prices = price_history[-24 * lookback_days:]
-        low_thr = np.quantile(recent_prices, low_q)
-        high_thr = np.quantile(recent_prices, high_q)
+MAX_VOLUME = 100_000  # m3
 
-        # produce electricity
-        if price > high_thr and reservoir_energy > 0:
-            energy_used = min(max_prod_j, reservoir_energy)
-            reservoir_energy -= energy_used
-            profit += j_to_mwh(energy_used) * price
+# load training data
+train = pd.read_excel("train.xlsx").rename(columns={"PRICES": "Date"})
+train["Date"] = pd.to_datetime(train["Date"])
 
-        # pump water
-        elif price < low_thr and reservoir_energy < max_energy:
-            energy_added = min(max_pump_j, max_energy - reservoir_energy)
-            reservoir_energy += energy_added * 0.8
-            profit -= j_to_mwh(energy_added) * price
+HOUR_COLS = [f"Hour {h:02d}" for h in range(1, 25)]
 
-        reservoir_trace.append(j_to_mwh(reservoir_energy))
-        profit_trace.append(profit)
-        price_trace.append(price)
-        time_trace.append(t)
-        t += 1
+# =====================
+# PRECOMPUTE EXPECTED PRICES (OFFLINE)
+# =====================
+train_long = train.melt(
+    id_vars=["Date"],
+    value_vars=HOUR_COLS,
+    var_name="Hour",
+    value_name="Price"
+)
 
+train_long["Hour"] = train_long["Hour"].str.extract(r"(\d+)").astype(int) - 1
+train_long["Weekday"] = train_long["Date"].dt.weekday
+train_long["DayOfYear"] = train_long["Date"].dt.dayofyear
 
-        # else: do nothing
+weekday_hour_mean = (
+    train_long
+    .groupby(["Weekday", "Hour"])["Price"]
+    .mean()
+    .unstack()
+)
 
-print(f"final reservoir level: {j_to_mwh(reservoir_energy):.2f} mwh")
-print(f"total profit: €{profit:.2f}")
-
-
-base_dir = "results/results_baseline/img"
-os.makedirs(base_dir, exist_ok=True)
-
-
-plt.figure(figsize=(10, 4))
-plt.plot(time_trace, reservoir_trace)
-plt.xlabel("Time (hours)")
-plt.ylabel("Reservoir energy (MWh)")
-plt.title("Reservoir Energy Over Time – Rule-Based Baseline")
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(f"{base_dir}/reservoir_energy.png")
-plt.close()
+dayofyear_mean = (
+    train_long
+    .groupby("DayOfYear")["Price"]
+    .mean()
+)
 
 
-plt.figure(figsize=(10, 4))
-plt.plot(time_trace, price_trace)
-plt.xlabel("Time (hours)")
-plt.ylabel("Electricity price (€/MWh)")
-plt.title("Electricity Price Over Time")
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(f"{base_dir}/price.png")
-plt.close()
+class BaselinePolicy:
+    """
+    Rule-based baseline using expected price + deadband.
+    Compatible with TestEnv.
+    """
 
-plt.figure(figsize=(10, 4))
-plt.plot(time_trace, profit_trace)
-plt.xlabel("Time (hours)")
-plt.ylabel("Cumulative profit (€)")
-plt.title("Cumulative Profit – Rule-Based Baseline")
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(f"{base_dir}/profit.png")
-plt.close()
+    def __init__(self, weekday_hour_mean, dayofyear_mean):
+        self.weekday_hour_mean = weekday_hour_mean
+        self.dayofyear_mean = dayofyear_mean
 
+    def act(self, observation):
+        """
+        observation =
+        [volume, price, hour, weekday, dayofyear, month, year]
+        """
+
+        obs = parse_observation(observation)
+
+        price = obs["price"]
+        hour = obs["hour"]
+        weekday = obs["weekday"]
+        dayofyear = obs["dayofyear"]
+        storage_frac = obs["volume"] / MAX_VOLUME
+
+        exp_wh = self.weekday_hour_mean.loc[weekday, hour]
+        exp_doy = self.dayofyear_mean.loc[dayofyear]
+        expected_price = 0.5 * exp_wh + 0.5 * exp_doy
+
+        if price > expected_price * UPPER_MARGIN and storage_frac > 0.1:
+            return -1.0
+        elif price < expected_price * LOWER_MARGIN and storage_frac < 0.9:
+            return +1.0
+        else:
+            return 0.0
+
+
+def make_agent():
+    """
+    Factory function to create the baseline agent.
+    Used by main.py.
+    """
+    return BaselinePolicy(weekday_hour_mean, dayofyear_mean)
+
+
+
+if __name__ == "__main__":
+
+    os.makedirs(IMG_DIR, exist_ok=True)
+
+    env = HydroElectric_Test(path_to_test_data="validate.xlsx")
+    policy = BaselinePolicy(weekday_hour_mean, dayofyear_mean)
+
+    results = evaluate_policy(env, policy)
+
+    total_profit = results["cum_rewards"][-1]
+    print(f"Validation total profit ({ALGO_NAME}): {total_profit:.2f} EUR")
+
+    plot_cumulative_profit(
+        results["cum_rewards"],
+        IMG_DIR,
+        "cumulative_profit.png",
+        "Baseline: cumulative profit (validation)"
+    )
+
+    plot_dam_level(
+        results["dam_levels"],
+        IMG_DIR,
+        "dam_level.png",
+        "Baseline: dam level over time"
+    )
+
+    plot_action_vs_price(
+        results["prices"],
+        results["actions"],
+        IMG_DIR,
+        "action_vs_price.png",
+        "Baseline: action vs price"
+    )
+
+    plot_mean_action_by_hour(
+        results["actions"],
+        IMG_DIR,
+        "mean_action_by_hour.png",
+        "Baseline: mean action by hour"
+    )

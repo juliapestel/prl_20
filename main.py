@@ -2,35 +2,35 @@ from TestEnv import HydroElectric_Test
 import argparse
 import matplotlib.pyplot as plt
 
+from baseline import make_agent
+# later you can switch to:
+# from qlearning_env import make_agent
+
 parser = argparse.ArgumentParser()
-parser.add_argument('--excel_file', type=str, default='validate.xlsx') # Path to the excel file with the test data
+parser.add_argument('--excel_file', type=str, default='validate.xlsx')
 args = parser.parse_args()
 
 env = HydroElectric_Test(path_to_test_data=args.excel_file)
+agent = make_agent()
+
 total_reward = []
 cumulative_reward = []
 
 observation = env.observation()
-for i in range(730*24 -1): # Loop through 2 years -> 730 days * 24 hours
-    # Choose a random action between -1 (full capacity sell) and 1 (full capacity pump)
-    action = env.continuous_action_space.sample()
-    # Or choose an action based on the observation using your RL agent!:
-    # action = RL_agent.act(observation)
-    # The observation is the tuple: [volume, price, hour_of_day, day_of_week, day_of_year, month_of_year, year]
-    next_observation, reward, terminated, truncated, info = env.step(action)
+
+for _ in range(730 * 24 - 1):
+    action = agent.act(observation)
+    observation, reward, terminated, truncated, _ = env.step(action)
+
     total_reward.append(reward)
     cumulative_reward.append(sum(total_reward))
 
-    done = terminated or truncated
-    observation = next_observation
+    if terminated or truncated:
+        break
 
-    if done:
-        print('Total reward: ', sum(total_reward))
-        # Plot the cumulative reward over time
-        plt.plot(cumulative_reward)
-        plt.xlabel('Time (Hours)')
-        plt.show()
+print("Total reward:", sum(total_reward))
 
-
-
-
+plt.plot(cumulative_reward)
+plt.xlabel("Time (hours)")
+plt.ylabel("Cumulative reward")
+plt.show()
