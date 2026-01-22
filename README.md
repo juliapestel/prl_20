@@ -8,7 +8,7 @@ The objective is to decide, at each hour, whether to pump water, generate electr
 
 ## Repository Structure
 
-.
+```
 ├── TestEnv.py                # Fixed validation environment (DO NOT MODIFY)
 ├── main.py                   # Main evaluation entry point
 │
@@ -27,7 +27,7 @@ The objective is to decide, at each hour, whether to pump water, generate electr
 └── img/
     ├── baseline/              # Baseline figures
     └── qlearning/             # RL figures
-
+```
 ---
 
 ## Environment
