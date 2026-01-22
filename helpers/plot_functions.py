@@ -1,6 +1,6 @@
 """
 Common plotting utilities for dam operation experiments.
-Used to ensure consistent visualization and fair comparison.
+Used to ensure consistent visualisation and fair comparison.
 """
 
 import os
