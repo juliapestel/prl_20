@@ -3,7 +3,6 @@ import argparse
 import matplotlib.pyplot as plt
 
 from baseline import make_agent
-# later you can switch to:
 # from qlearning_env import make_agent
 
 parser = argparse.ArgumentParser()

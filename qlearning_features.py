@@ -15,16 +15,12 @@ from helpers.plot_functions import (
     plot_policy_heatmap,
 )
 
-# =====================
-# CONFIG
-# =====================
-alg_name = "qlearning"
+alg_name = "qlearning_features"
 img_root = "img"
 IMG_DIR = os.path.join(img_root, alg_name)
 
 MAX_VOLUME = 100_000  # m3
 
-# Q-learning hyperparameters
 N_EPISODES = 20
 ALPHA = 0.1
 GAMMA = 0.99
@@ -32,17 +28,13 @@ EPSILON_START = 1.0
 EPSILON_END = 0.05
 EPSILON_DECAY = 0.95
 
-# Discrete actions (mapped to env actions)
 ACTIONS = {
-    0: -1.0,   # release
-    1:  0.0,   # hold
-    2:  1.0    # pump
+    0: -1.0,
+    1:  0.0,
+    2:  1.0
 }
 N_ACTIONS = len(ACTIONS)
 
-# =====================
-# LOAD TRAINING DATA (for discretisation only)
-# =====================
 train = pd.read_excel("train.xlsx").rename(columns={"PRICES": "Date"})
 train["Date"] = pd.to_datetime(train["Date"])
 
@@ -58,50 +50,16 @@ train_long = train.melt(
 # price bins from training distribution
 PRICE_BINS = np.quantile(train_long["Price"], [0.25, 0.5, 0.75])
 
-# =====================
-# DISCRETISATION (BASELINE)
-# =====================
+# hier moet iets anders want we hebben dan andere features
 def discretize_observation(observation):
-    """
-    Convert continuous observation into a discrete state.
-    """
-    obs = parse_observation(observation)
+    pass
 
-    volume_bin = int(np.clip(obs["volume"] / MAX_VOLUME * 5, 0, 4))
-    price_bin = int(np.digitize(obs["price"], PRICE_BINS))
-    hour_bin = obs["hour"] - 1          # env gives 1–24
-    weekday_bin = obs["weekday"]
-
-    return (volume_bin, price_bin, hour_bin, weekday_bin)
-
-# =====================
-# AGENT FACTORY
-# =====================
+# kan hetezelfde als in q_learning.py,  maar dan wel die andere discretized observations 
 def make_agent():
-    """
-    Create and train a tabular Q-learning agent
-    using the baseline discretisation.
-    """
-    agent = QLearningPolicy(
-        discretize_fn=discretize_observation,
-        actions=ACTIONS,
-        n_actions=N_ACTIONS,
-        alpha=ALPHA,
-        gamma=GAMMA,
-        epsilon_start=EPSILON_START,
-        epsilon_end=EPSILON_END,
-        epsilon_decay=EPSILON_DECAY,
-        n_episodes=N_EPISODES,
-        env_class=HydroElectric_Test,
-        train_path="train.xlsx",
-    )
+    pass
 
-    agent.train()
-    return agent
 
-# =====================
-# MAIN (validation + plots)
-# =====================
+# precies hetzelfde als normale tabular qlearning maar dan andere nam voor plotjes
 if __name__ == "__main__":
 
     os.makedirs(IMG_DIR, exist_ok=True)
@@ -120,14 +78,14 @@ if __name__ == "__main__":
     plot_cumulative_profit(
         results["cum_rewards"],
         IMG_DIR,
-        "ql_cumulative_profit.png",
+        "featql_cumulative_profit.png",
         "Q-learning: cumulative profit (validation)"
     )
 
     plot_dam_level(
         results["dam_levels"],
         IMG_DIR,
-        "ql_dam_level.png",
+        "featql_dam_level.png",
         "Q-learning: dam level over time"
     )
 
@@ -135,14 +93,14 @@ if __name__ == "__main__":
         results["prices"],
         results["actions"],
         IMG_DIR,
-        "ql_action_vs_price.png",
+        "featql_action_vs_price.png",
         "Q-learning: action vs price"
     )
 
     plot_mean_action_by_hour(
         results["actions"],
         IMG_DIR,
-        "ql_mean_action_by_hour.png",
+        "featql_mean_action_by_hour.png",
         "Q-learning: mean action by hour"
     )
 
@@ -151,7 +109,7 @@ if __name__ == "__main__":
         fixed_hour=12,
         fixed_weekday=0,
         out_dir=IMG_DIR,
-        filename="ql_q_value_heatmap.png",
+        filename="featql_q_value_heatmap.png",
         title="Q-learning: value heatmap (hour=12, weekday=Mon)"
     )
 
@@ -160,7 +118,7 @@ if __name__ == "__main__":
         fixed_hour=12,
         fixed_weekday=0,
         out_dir=IMG_DIR,
-        filename="ql_policy_heatmap.png",
+        filename="featql_policy_heatmap.png",
         title="Q-learning: policy heatmap (hour=12, weekday=Mon)"
     )
 
@@ -170,3 +128,4 @@ def load_agent():
     Trains and returns a Q-learning agent.
     """
     return make_agent()
+
