@@ -13,14 +13,14 @@ from helpers.plot_functions import (
 )
 
 
-ALGO_NAME = "baseline"
-IMG_ROOT = "img"
-IMG_DIR = os.path.join(IMG_ROOT, ALGO_NAME)
+alg_name = "baseline"
+img_root = "img"
+IMG_DIR = os.path.join(img_root, alg_name)
 
 UPPER_MARGIN = 1.08
 LOWER_MARGIN = 0.92
 
-MAX_VOLUME = 100_000  # m3
+MAX_VOLUME = 100000  # m3
 
 # load training data
 train = pd.read_excel("train.xlsx").rename(columns={"PRICES": "Date"})
@@ -28,9 +28,7 @@ train["Date"] = pd.to_datetime(train["Date"])
 
 HOUR_COLS = [f"Hour {h:02d}" for h in range(1, 25)]
 
-# =====================
-# PRECOMPUTE EXPECTED PRICES (OFFLINE)
-# =====================
+# precompute expected prices
 train_long = train.melt(
     id_vars=["Date"],
     value_vars=HOUR_COLS,
@@ -105,14 +103,16 @@ if __name__ == "__main__":
 
     os.makedirs(IMG_DIR, exist_ok=True)
 
+    # initialise environment
     env = HydroElectric_Test(path_to_test_data="validate.xlsx")
     policy = BaselinePolicy(weekday_hour_mean, dayofyear_mean)
 
     results = evaluate_policy(env, policy)
 
     total_profit = results["cum_rewards"][-1]
-    print(f"Validation total profit ({ALGO_NAME}): {total_profit:.2f} EUR")
+    print(f"Validation total profit ({alg_name}): {total_profit:.2f} EUR")
 
+    # plotten
     plot_cumulative_profit(
         results["cum_rewards"],
         IMG_DIR,

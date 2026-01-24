@@ -10,15 +10,18 @@ from helpers.plot_functions import (
     plot_cumulative_profit,
     plot_dam_level,
     plot_action_vs_price,
-    plot_mean_action_by_hour
+    plot_mean_action_by_hour,
+    plot_q_value_heatmap,
+    plot_policy_heatmap,
+    plot_state_visitation_heatmap
 )
 
 # =====================
 # CONFIG
 # =====================
-ALGO_NAME = "qlearning"
-IMG_ROOT = "img"
-IMG_DIR = os.path.join(IMG_ROOT, ALGO_NAME)
+alg_name = "qlearning"
+img_root = "img"
+IMG_DIR = os.path.join(img_root, alg_name)
 
 MAX_VOLUME = 100_000  # m3
 
@@ -38,9 +41,8 @@ ACTIONS = {
 }
 N_ACTIONS = len(ACTIONS)
 
-# =====================
+
 # LOAD TRAINING DATA (for discretization only)
-# =====================
 train = pd.read_excel("train.xlsx").rename(columns={"PRICES": "Date"})
 train["Date"] = pd.to_datetime(train["Date"])
 
@@ -56,9 +58,7 @@ train_long = train.melt(
 # price bins from training distribution
 PRICE_BINS = np.quantile(train_long["Price"], [0.25, 0.5, 0.75])
 
-# =====================
 # DISCRETIZATION
-# =====================
 def discretize_observation(observation):
     """
     Convert continuous observation into a discrete state.
@@ -72,9 +72,8 @@ def discretize_observation(observation):
 
     return (volume_bin, price_bin, hour_bin, weekday_bin)
 
-# =====================
+
 # Q-LEARNING AGENT
-# =====================
 class QLearningPolicy:
     """
     Tabular Q-learning agent.
@@ -146,9 +145,7 @@ def make_agent():
     return agent
 
 
-# =====================
 # MAIN (validation + plots)
-# =====================
 if __name__ == "__main__":
 
     os.makedirs(IMG_DIR, exist_ok=True)
@@ -161,20 +158,20 @@ if __name__ == "__main__":
     results = evaluate_policy(env, policy)
 
     total_profit = results["cum_rewards"][-1]
-    print(f"Validation total profit ({ALGO_NAME}): {total_profit:.2f} EUR")
+    print(f"Validation total profit ({alg_name}): {total_profit:.2f} EUR")
 
-    # plots — IDENTICAL interface to baseline
+    # plots 
     plot_cumulative_profit(
         results["cum_rewards"],
         IMG_DIR,
-        "cumulative_profit.png",
+        "ql_cumulative_profit.png",
         "Q-learning: cumulative profit (validation)"
     )
 
     plot_dam_level(
         results["dam_levels"],
         IMG_DIR,
-        "dam_level.png",
+        "ql_dam_level.png",
         "Q-learning: dam level over time"
     )
 
@@ -182,13 +179,31 @@ if __name__ == "__main__":
         results["prices"],
         results["actions"],
         IMG_DIR,
-        "action_vs_price.png",
+        "ql_action_vs_price.png",
         "Q-learning: action vs price"
     )
 
     plot_mean_action_by_hour(
         results["actions"],
         IMG_DIR,
-        "mean_action_by_hour.png",
+        "ql_mean_action_by_hour.png",
         "Q-learning: mean action by hour"
+    )
+
+    plot_q_value_heatmap(
+        policy.Q,
+        fixed_hour=12,
+        fixed_weekday=0,
+        out_dir=IMG_DIR,
+        filename="ql_q_value_heatmap.png",
+        title="Q-learning: value heatmap (hour=12, weekday=Mon)"
+    )
+
+    plot_policy_heatmap(
+        policy.Q,
+        fixed_hour=12,
+        fixed_weekday=0,
+        out_dir=IMG_DIR,
+        filename="ql_policy_heatmap.png",
+        title="Q-learning: policy heatmap (hour=12, weekday=Mon)"
     )
