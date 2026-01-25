@@ -21,7 +21,7 @@ IMG_DIR = os.path.join(img_root, alg_name)
 
 MAX_VOLUME = 100_000  # m3
 
-N_EPISODES = 20
+N_EPISODES = 50
 ALPHA = 0.1
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -50,14 +50,103 @@ train_long = train.melt(
 # price bins from training distribution
 PRICE_BINS = np.quantile(train_long["Price"], [0.25, 0.5, 0.75])
 
-# hier moet iets anders want we hebben dan andere features
 def discretize_observation(observation):
-    pass
+    """
+    Feature-engineered discretisation using ONLY available env features.
+    Fully compatible with existing plots & env.
+    """
+    obs = parse_observation(observation)
+
+  
+    v_ratio = obs["volume"] / MAX_VOLUME
+    if v_ratio < 0.1:
+        volume_bin = 0
+    elif v_ratio < 0.3:
+        volume_bin = 1
+    elif v_ratio < 0.7:
+        volume_bin = 2
+    elif v_ratio < 0.9:
+        volume_bin = 3
+    else:
+        volume_bin = 4
+
+
+    price_bin = int(np.digitize(obs["price"], PRICE_BINS))
+
+    if price_bin == 0:
+        price_extreme = 0      # very low
+    elif price_bin == 3:
+        price_extreme = 2      # very high
+    else:
+        price_extreme = 1      # mid
+
+
+    h = obs["hour"]
+    if h <= 6:
+        hour_group = 0         # night
+    elif h <= 12:
+        hour_group = 1         # morning
+    elif h <= 18:
+        hour_group = 2         # afternoon
+    else:
+        hour_group = 3         # evening
+
+    weekday_bin = obs["weekday"]
+    hour_bin = obs["hour"] - 1   # keep for plots
+
+    return (
+        volume_bin,
+        price_bin,
+        price_extreme,
+        hour_group,
+        hour_bin,
+        weekday_bin,
+    )
 
 # kan hetezelfde als in q_learning.py,  maar dan wel die andere discretized observations 
 def make_agent():
-    pass
+    """
+    Create and train a tabular Q-learning agent
+    using feature-engineered discretisation.
+    """
+    agent = QLearningPolicy(
+        discretize_fn=discretize_observation,
+        actions=ACTIONS,
+        n_actions=N_ACTIONS,
+        alpha=ALPHA,
+        gamma=GAMMA,
+        epsilon_start=EPSILON_START,
+        epsilon_end=EPSILON_END,
+        epsilon_decay=EPSILON_DECAY,
+        n_episodes=N_EPISODES,
+        env_class=HydroElectric_Test,
+        train_path="train.xlsx",
+    )
 
+    agent.train()
+    return agent
+
+def reduce_Q_for_plotting(Q):
+    """
+    Reduce high-dimensional Q-table to 4D (v, p, h, w)
+    by averaging over the extra feature dimensions.
+    """
+    from collections import defaultdict
+
+    Q_reduced = defaultdict(lambda: np.zeros(len(ACTIONS)))
+    counts = defaultdict(int)
+
+    for state, q_vals in Q.items():
+        v, p, _, _, h, w = state   # negeer extra features
+        key = (v, p, h, w)
+
+        Q_reduced[key] += q_vals
+        counts[key] += 1
+
+    for key in Q_reduced:
+        Q_reduced[key] /= counts[key]
+
+    return dict(Q_reduced)
 
 # precies hetzelfde als normale tabular qlearning maar dan andere nam voor plotjes
 if __name__ == "__main__":
@@ -103,9 +192,10 @@ if __name__ == "__main__":
         "featql_mean_action_by_hour.png",
         "Q-learning: mean action by hour"
     )
+    Q_plot = reduce_Q_for_plotting(policy.Q)
 
     plot_q_value_heatmap(
-        policy.Q,
+        Q_plot,
         fixed_hour=12,
         fixed_weekday=0,
         out_dir=IMG_DIR,
@@ -114,7 +204,7 @@ if __name__ == "__main__":
     )
 
     plot_policy_heatmap(
-        policy.Q,
+        Q_plot,
         fixed_hour=12,
         fixed_weekday=0,
         out_dir=IMG_DIR,

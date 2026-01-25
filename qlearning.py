@@ -25,7 +25,7 @@ IMG_DIR = os.path.join(img_root, alg_name)
 MAX_VOLUME = 100_000  # m3
 
 # Q-learning hyperparameters
-N_EPISODES = 20
+N_EPISODES = 50
 ALPHA = 0.1
 GAMMA = 0.99
 EPSILON_START = 1.0
