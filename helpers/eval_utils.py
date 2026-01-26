@@ -2,6 +2,8 @@ import numpy as np
 
 def evaluate_policy(env, policy):
     obs = env.observation()
+    if hasattr(policy.discretize, "reset"):
+        policy.discretize.reset()
 
     rewards = []
     dam_levels = []

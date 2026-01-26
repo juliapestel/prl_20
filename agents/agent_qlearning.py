@@ -43,6 +43,8 @@ class QLearningPolicy:
 
             env = self.env_class(self.train_path)
             obs = env.observation()
+            if hasattr(self.discretize, "reset"):
+                self.discretize.reset()
             done = False
             total_reward = 0.0
 
@@ -52,12 +54,19 @@ class QLearningPolicy:
                 if np.random.rand() < epsilon:
                     action_idx = np.random.randint(self.n_actions)
                 else:
-                    action_idx = np.argmax(self.Q[state])
+                    q = self.Q[state]
+
+                    # tie-break: if all equal (common when unseen), don't default to argmax->0
+                    if np.allclose(q, q[0]):
+                        action_idx = 1  # safe default = "do nothing" (assumes actions [-1,0,1])
+                    else:
+                        action_idx = int(np.argmax(q))
 
                 action = self.actions[action_idx]
 
                 next_obs, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
+
 
                 next_state = self.discretize(next_obs)
 
@@ -79,5 +88,13 @@ class QLearningPolicy:
 
     def act(self, observation):
         state = self.discretize(observation)
-        action_idx = np.argmax(self.Q[state])
+        q = self.Q[state]
+
+        # If all Q-values are equal (common for unseen states), avoid always picking index 0
+        if np.allclose(q, q[0]):
+            action_idx = 1  # safe default = "do nothing" (assumes actions = [-1, 0, 1])
+        else:
+            action_idx = int(np.argmax(q))
+
         return self.actions[action_idx]
+

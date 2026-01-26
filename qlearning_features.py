@@ -14,6 +14,10 @@ from helpers.plot_functions import (
     plot_q_value_heatmap,
     plot_policy_heatmap,
 )
+extractor = FeatureExtractorCont(max_volume=MAX_VOLUME)
+
+
+
 
 alg_name = "qlearning_features"
 img_root = "img"
@@ -21,11 +25,11 @@ IMG_DIR = os.path.join(img_root, alg_name)
 
 MAX_VOLUME = 100_000  # m3
 
-N_EPISODES = 50
+N_EPISODES = 100
 ALPHA = 0.1
 GAMMA = 0.99
 EPSILON_START = 1.0
-EPSILON_END = 0.05
+EPSILON_END = 0.01
 EPSILON_DECAY = 0.95
 
 ACTIONS = {
@@ -49,6 +53,7 @@ train_long = train.melt(
 
 # price bins from training distribution
 PRICE_BINS = np.quantile(train_long["Price"], [0.25, 0.5, 0.75])
+extractor = FeatureExtractor(max_volume=MAX_VOLUME)
 
 def discretize_observation(observation):
     """
@@ -92,7 +97,7 @@ def discretize_observation(observation):
         hour_group = 3         # evening
 
     weekday_bin = obs["weekday"]
-    hour_bin = obs["hour"] - 1   # keep for plots
+    hour_bin = obs["hour"] 
 
     return (
         volume_bin,
@@ -103,14 +108,9 @@ def discretize_observation(observation):
         weekday_bin,
     )
 
-# kan hetezelfde als in q_learning.py,  maar dan wel die andere discretized observations 
-def make_agent():
-    """
-    Create and train a tabular Q-learning agent
-    using feature-engineered discretisation.
-    """
+def make_agent(train=False):
     agent = QLearningPolicy(
-        discretize_fn=discretize_observation,
+        discretize_fn=extractor,  # of extractor, maar kies 1
         actions=ACTIONS,
         n_actions=N_ACTIONS,
         alpha=ALPHA,
@@ -123,8 +123,21 @@ def make_agent():
         train_path="train.xlsx",
     )
 
-    agent.train()
+    MODEL_PATH = "qtable.npy"
+
+    if train:
+        agent.train()
+        np.save(MODEL_PATH, dict(agent.Q))
+    else:
+        agent.Q.update(np.load(MODEL_PATH, allow_pickle=True).item())
+
+    agent.epsilon = 0.0
     return agent
+
+
+
+
+
 
 def reduce_Q_for_plotting(Q):
     """
