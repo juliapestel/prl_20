@@ -9,11 +9,13 @@ The objective is to decide, at each hour, whether to pump water, generate electr
 ## Repository Structure
 
 ```
-├── TestEnv.py                # Fixed validation environment (DO NOT MODIFY)
+├── TestEnv.py                # Fixed validation environment
 ├── main.py                   # Main evaluation entry point
 │
-├── baseline_env.py            # Baseline algorithm
-├── qlearning_env.py           # (Optional) Q-learning algorithm
+├── baseline.py               # Baseline algorithm
+├── qlearning.py              # Tabular Q-learning algorithm
+├── qlearning_features.py     # Tabular Q-learning algorithm with feature engineering
+├── linarq_features.py        # Linear Q-learning with function approximator
 │
 ├── helpers/
 │   ├── __init__.py
@@ -26,7 +28,7 @@ The objective is to decide, at each hour, whether to pump water, generate electr
 │
 └── img/
     ├── baseline/              # Baseline figures
-    └── qlearning/             # RL figures
+    └── qlearning/             # QL figures
 ```
 ---
 
@@ -34,7 +36,6 @@ The objective is to decide, at each hour, whether to pump water, generate electr
 
 The environment is implemented in `TestEnv.py` and follows the Gymnasium API.
 
-- `TestEnv.py` must NOT be modified.
 - Observations have the form:
   [volume, price, hour_of_day, day_of_week, day_of_year, month, year]
 - Actions are continuous values in the range [-1, 1]:
@@ -60,7 +61,6 @@ This command:
 - prints the total cumulative reward,
 - plots the cumulative reward over time.
 
-The structure of `main.py` follows the example provided by the course staff.
 
 ---
 
