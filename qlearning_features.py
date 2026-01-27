@@ -13,10 +13,12 @@ from helpers.plot_functions import (
     plot_mean_action_by_hour,
     plot_q_value_heatmap,
     plot_policy_heatmap,
+    plot_state_visitation_heatmap
 )
-extractor = FeatureExtractorCont(max_volume=MAX_VOLUME)
+# extractor = FeatureExtractorCont(max_volume=MAX_VOLUME)
 
-
+QT_DIR = "qtables"
+os.makedirs(QT_DIR, exist_ok=True)
 
 
 alg_name = "qlearning_features"
@@ -25,12 +27,12 @@ IMG_DIR = os.path.join(img_root, alg_name)
 
 MAX_VOLUME = 100_000  # m3
 
-N_EPISODES = 100
+N_EPISODES = 200
 ALPHA = 0.1
 GAMMA = 0.99
 EPSILON_START = 1.0
 EPSILON_END = 0.01
-EPSILON_DECAY = 0.95
+EPSILON_DECAY = 0.97
 
 ACTIONS = {
     0: -1.0,
@@ -52,8 +54,10 @@ train_long = train.melt(
 )
 
 # price bins from training distribution
-PRICE_BINS = np.quantile(train_long["Price"], [0.25, 0.5, 0.75])
-extractor = FeatureExtractor(max_volume=MAX_VOLUME)
+PRICE_BINS = np.quantile(train_long["Price"],
+                         [0.15, 0.3, 0.5, 0.7, 0.85])
+
+# extractor = FeatureExtractor(max_volume=MAX_VOLUME)
 
 def discretize_observation(observation):
     """
@@ -63,18 +67,15 @@ def discretize_observation(observation):
     obs = parse_observation(observation)
 
   
-    v_ratio = obs["volume"] / MAX_VOLUME
-    if v_ratio < 0.1:
-        volume_bin = 0
-    elif v_ratio < 0.3:
-        volume_bin = 1
-    elif v_ratio < 0.7:
-        volume_bin = 2
-    elif v_ratio < 0.9:
-        volume_bin = 3
-    else:
-        volume_bin = 4
+    N_VOL_BINS = 8
 
+    volume_bin = int(
+        np.clip(
+            obs["volume"] / MAX_VOLUME * N_VOL_BINS,
+            0,
+            N_VOL_BINS - 1
+        )
+    )
 
     price_bin = int(np.digitize(obs["price"], PRICE_BINS))
 
@@ -86,31 +87,33 @@ def discretize_observation(observation):
         price_extreme = 1      # mid
 
 
-    h = obs["hour"]
-    if h <= 6:
-        hour_group = 0         # night
-    elif h <= 12:
-        hour_group = 1         # morning
-    elif h <= 18:
-        hour_group = 2         # afternoon
-    else:
-        hour_group = 3         # evening
+    # h = obs["hour"]
+    # if h <= 6:
+    #     hour_group = 0         # night
+    # elif h <= 12:
+    #     hour_group = 1         # morning
+    # elif h <= 18:
+    #     hour_group = 2         # afternoon
+    # else:
+    #     hour_group = 3         # evening
 
     weekday_bin = obs["weekday"]
-    hour_bin = obs["hour"] 
+    hour_bin = obs["hour"] - 1
+
 
     return (
         volume_bin,
         price_bin,
-        price_extreme,
-        hour_group,
+        # price_extreme,
+        # hour_group,
         hour_bin,
         weekday_bin,
     )
 
 def make_agent(train=False):
+
     agent = QLearningPolicy(
-        discretize_fn=extractor,  # of extractor, maar kies 1
+        discretize_fn=discretize_observation,
         actions=ACTIONS,
         n_actions=N_ACTIONS,
         alpha=ALPHA,
@@ -123,15 +126,28 @@ def make_agent(train=False):
         train_path="train.xlsx",
     )
 
-    MODEL_PATH = "qtable.npy"
+    MODEL_PATH = os.path.join(QT_DIR, "qtable_features.npy")
 
-    if train:
+
+    # Auto-train if needed
+    if train or not os.path.exists(MODEL_PATH):
+
+        print("[Feature Q] Training model...")
         agent.train()
-        np.save(MODEL_PATH, dict(agent.Q))
-    else:
-        agent.Q.update(np.load(MODEL_PATH, allow_pickle=True).item())
 
+        np.save(MODEL_PATH, dict(agent.Q))
+        print(f"[Feature Q] Saved model to {MODEL_PATH}")
+
+    else:
+
+        print(f"[Feature Q] Loading model from {MODEL_PATH}")
+        agent.Q.update(
+            np.load(MODEL_PATH, allow_pickle=True).item()
+        )
+
+    # Pure exploitation for eval
     agent.epsilon = 0.0
+
     return agent
 
 
@@ -139,27 +155,29 @@ def make_agent(train=False):
 
 
 
-def reduce_Q_for_plotting(Q):
-    """
-    Reduce high-dimensional Q-table to 4D (v, p, h, w)
-    by averaging over the extra feature dimensions.
-    """
-    from collections import defaultdict
 
-    Q_reduced = defaultdict(lambda: np.zeros(len(ACTIONS)))
-    counts = defaultdict(int)
+# def reduce_Q_for_plotting(Q):
 
-    for state, q_vals in Q.items():
-        v, p, _, _, h, w = state   # negeer extra features
-        key = (v, p, h, w)
+#     from collections import defaultdict
 
-        Q_reduced[key] += q_vals
-        counts[key] += 1
+#     Q_reduced = defaultdict(lambda: np.zeros(len(ACTIONS)))
+#     counts = defaultdict(int)
 
-    for key in Q_reduced:
-        Q_reduced[key] /= counts[key]
+#     for state, q_vals in Q.items():
 
-    return dict(Q_reduced)
+#         # state is now (v, p, h, w)
+#         v, p, h, w = state
+
+#         key = (v, p, h, w)
+
+#         Q_reduced[key] += q_vals
+#         counts[key] += 1
+
+#     for key in Q_reduced:
+#         Q_reduced[key] /= counts[key]
+
+#     return dict(Q_reduced)
+
 
 # precies hetzelfde als normale tabular qlearning maar dan andere nam voor plotjes
 if __name__ == "__main__":
@@ -167,7 +185,8 @@ if __name__ == "__main__":
     os.makedirs(IMG_DIR, exist_ok=True)
 
     # train agent
-    policy = make_agent()
+    policy = make_agent(train=False)
+
 
     # validate
     env = HydroElectric_Test(path_to_test_data="validate.xlsx")
@@ -205,30 +224,37 @@ if __name__ == "__main__":
         "featql_mean_action_by_hour.png",
         "Q-learning: mean action by hour"
     )
-    Q_plot = reduce_Q_for_plotting(policy.Q)
-
+    
     plot_q_value_heatmap(
-        Q_plot,
-        fixed_hour=12,
-        fixed_weekday=0,
+        policy.Q,
+        PRICE_BINS,
         out_dir=IMG_DIR,
         filename="featql_q_value_heatmap.png",
-        title="Q-learning: value heatmap (hour=12, weekday=Mon)"
+        title="Feature Q-learning: value heatmap (averaged over time)"
     )
 
     plot_policy_heatmap(
-        Q_plot,
-        fixed_hour=12,
-        fixed_weekday=0,
+        policy.Q,
+        PRICE_BINS,
         out_dir=IMG_DIR,
         filename="featql_policy_heatmap.png",
-        title="Q-learning: policy heatmap (hour=12, weekday=Mon)"
+        title="Feature Q-learning: policy heatmap (averaged over time)"
     )
+
+    plot_state_visitation_heatmap(
+        results["visited_states"],
+        PRICE_BINS,
+        out_dir=IMG_DIR,
+        filename="featql_state_visits.png",
+        title="Q-learning: state visitation"
+    )
+
+
 
 def load_agent():
     """
     Entry point for graders.
     Trains and returns a Q-learning agent.
     """
-    return make_agent()
+    return make_agent(train=False)
 

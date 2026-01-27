@@ -13,7 +13,12 @@ from helpers.plot_functions import (
     plot_mean_action_by_hour,
     plot_q_value_heatmap,
     plot_policy_heatmap,
+    plot_state_visitation_heatmap
 )
+
+QT_DIR = "qtables"
+os.makedirs(QT_DIR, exist_ok=True)
+
 
 # =====================
 # CONFIG
@@ -25,12 +30,12 @@ IMG_DIR = os.path.join(img_root, alg_name)
 MAX_VOLUME = 100_000  # m3
 
 # Q-learning hyperparameters
-N_EPISODES = 50
+N_EPISODES = 200
 ALPHA = 0.1
 GAMMA = 0.99
 EPSILON_START = 1.0
 EPSILON_END = 0.05
-EPSILON_DECAY = 0.95
+EPSILON_DECAY = 0.97
 
 # Discrete actions (mapped to env actions)
 ACTIONS = {
@@ -56,7 +61,9 @@ train_long = train.melt(
 )
 
 # price bins from training distribution
-PRICE_BINS = np.quantile(train_long["Price"], [0.25, 0.5, 0.75])
+PRICE_BINS = np.quantile(train_long["Price"],
+                         [0.15, 0.3, 0.5, 0.7, 0.85])
+
 
 # =====================
 # DISCRETISATION (BASELINE)
@@ -67,7 +74,11 @@ def discretize_observation(observation):
     """
     obs = parse_observation(observation)
 
-    volume_bin = int(np.clip(obs["volume"] / MAX_VOLUME * 5, 0, 4))
+    N_VOL_BINS = 8
+    volume_bin = int(
+        np.clip(obs["volume"] / MAX_VOLUME * N_VOL_BINS, 0, N_VOL_BINS-1)
+    )
+
     price_bin = int(np.digitize(obs["price"], PRICE_BINS))
     hour_bin = obs["hour"] - 1          # env gives 1–24
     weekday_bin = obs["weekday"]
@@ -77,11 +88,11 @@ def discretize_observation(observation):
 # =====================
 # AGENT FACTORY
 # =====================
-def make_agent():
+def make_agent(train=False):
     """
-    Create and train a tabular Q-learning agent
-    using the baseline discretisation.
+    Create, train (if needed), and return a tabular Q-learning agent.
     """
+
     agent = QLearningPolicy(
         discretize_fn=discretize_observation,
         actions=ACTIONS,
@@ -96,8 +107,30 @@ def make_agent():
         train_path="train.xlsx",
     )
 
-    agent.train()
+    MODEL_PATH = os.path.join(QT_DIR, "qtable_tabular.npy")
+
+
+    # Auto-train if needed
+    if train or not os.path.exists(MODEL_PATH):
+
+        print("[Tabular Q] Training model...")
+        agent.train()
+
+        np.save(MODEL_PATH, dict(agent.Q))
+        print(f"[Tabular Q] Saved model to {MODEL_PATH}")
+
+    else:
+
+        print(f"[Tabular Q] Loading model from {MODEL_PATH}")
+        agent.Q.update(
+            np.load(MODEL_PATH, allow_pickle=True).item()
+        )
+
+    # No exploration during evaluation
+    agent.epsilon = 0.0
+
     return agent
+
 
 # =====================
 # MAIN (validation + plots)
@@ -107,7 +140,7 @@ if __name__ == "__main__":
     os.makedirs(IMG_DIR, exist_ok=True)
 
     # train agent
-    policy = make_agent()
+    policy = make_agent(train=False)
 
     # validate
     env = HydroElectric_Test(path_to_test_data="validate.xlsx")
@@ -148,25 +181,34 @@ if __name__ == "__main__":
 
     plot_q_value_heatmap(
         policy.Q,
-        fixed_hour=12,
-        fixed_weekday=0,
+        PRICE_BINS,
         out_dir=IMG_DIR,
         filename="ql_q_value_heatmap.png",
-        title="Q-learning: value heatmap (hour=12, weekday=Mon)"
+        title="Q-learning: value heatmap (averaged over time)"
     )
+
 
     plot_policy_heatmap(
         policy.Q,
-        fixed_hour=12,
-        fixed_weekday=0,
+        PRICE_BINS,
         out_dir=IMG_DIR,
         filename="ql_policy_heatmap.png",
-        title="Q-learning: policy heatmap (hour=12, weekday=Mon)"
+        title="Q-learning: policy heatmap (averaged over time)"
     )
+    
+    plot_state_visitation_heatmap(
+        results["visited_states"],
+        PRICE_BINS,
+        out_dir=IMG_DIR,
+        filename="ql_state_visits.png",
+        title="Q-learning: state visitation"
+    )
+
+
 
 def load_agent():
     """
     Entry point for graders.
     Trains and returns a Q-learning agent.
     """
-    return make_agent()
+    return make_agent(train=False)

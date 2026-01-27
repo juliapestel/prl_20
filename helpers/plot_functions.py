@@ -102,149 +102,260 @@ def plot_mean_action_by_hour(actions, out_dir, filename, title):
     plt.close()
 
 
+# =========================
+# Helper functions
+# =========================
 
-# qlearning plots
+def _make_price_labels(price_bins):
+    """
+    Generate readable labels from price quantiles.
+    """
+    labels = []
+
+    labels.append(f"<{price_bins[0]:.0f}")
+
+    for i in range(len(price_bins) - 1):
+        labels.append(
+            f"{price_bins[i]:.0f}-{price_bins[i+1]:.0f}"
+        )
+
+    labels.append(f">{price_bins[-1]:.0f}")
+
+    return labels
+
+
+def _make_volume_labels(n_vol):
+    """
+    Generate percentage-based volume labels.
+    """
+    return [
+        f"{int(100*i/n_vol)}–{int(100*(i+1)/n_vol)}%"
+        for i in range(n_vol)
+    ]
+
+
+def _setup_heatmap_axes(
+    price_bins,
+    volume_bins,
+    price_quantiles,
+    xlabel,
+    ylabel,
+    title,
+):
+    """
+    Apply consistent axes formatting to heatmaps.
+    """
+
+    price_labels = _make_price_labels(price_quantiles)
+    volume_labels = _make_volume_labels(len(volume_bins))
+
+    plt.xticks(range(len(price_bins)), price_labels)
+    plt.yticks(range(len(volume_bins)), volume_labels)
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+
+
+# =========================
+# Q-value heatmap
+# =========================
+
 def plot_q_value_heatmap(
     Q,
-    fixed_hour,
-    fixed_weekday,
+    PRICE_BINS,
     out_dir,
     filename,
     title,
 ):
     """
-    Heatmap of V(s) = max_a Q(s,a)
-    for fixed (hour, weekday), over (volume_bin, price_bin).
+    Heatmap of V(s)=max_a Q(s,a), averaged over time.
     """
 
     os.makedirs(out_dir, exist_ok=True)
 
-    volume_bins = sorted({s[0] for s in Q.keys()})
-    price_bins = sorted({s[1] for s in Q.keys()})
+    from collections import defaultdict
 
-    heatmap = np.full((len(volume_bins), len(price_bins)), np.nan)
+    V_sum = defaultdict(float)
+    counts = defaultdict(int)
 
+    # Aggregate values
     for (v, p, h, w), q_vals in Q.items():
-        if h == fixed_hour and w == fixed_weekday:
-            i = volume_bins.index(v)
-            j = price_bins.index(p)
-            heatmap[i, j] = np.max(q_vals)
 
+        key = (v, p)
+
+        V_sum[key] += np.max(q_vals)
+        counts[key] += 1
+
+    volume_bins = sorted({k[0] for k in V_sum})
+    price_bins = sorted({k[1] for k in V_sum})
+
+    heatmap = np.full(
+        (len(volume_bins), len(price_bins)),
+        np.nan
+    )
+
+    for (v, p), val in V_sum.items():
+
+        i = volume_bins.index(v)
+        j = price_bins.index(p)
+
+        heatmap[i, j] = val / counts[(v, p)]
+
+    # Plot
     plt.figure(figsize=(6, 5))
-    im = plt.imshow(
-        heatmap,
-        origin="lower",
-        aspect="auto"
-    )
-    plt.colorbar(im, label="V(s) = max Q(s,a)")
-    plt.xlabel("Price bin")
-    plt.ylabel("Volume bin")
-    plt.title(title)
-    plt.xticks(range(len(price_bins)), price_bins)
-    plt.yticks(range(len(volume_bins)), volume_bins)
 
-    plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, filename))
-    plt.close()
+    im = plt.imshow(heatmap, origin="lower", aspect="auto")
+    plt.colorbar(im, label="Average V(s)")
 
-
-
-def plot_policy_heatmap(
-    Q,
-    fixed_hour,
-    fixed_weekday,
-    out_dir,
-    filename,
-    title,
-):
-    os.makedirs(out_dir, exist_ok=True)
-
-    volume_bins = sorted({s[0] for s in Q.keys()})
-    price_bins = sorted({s[1] for s in Q.keys()})
-
-    heatmap = np.full((len(volume_bins), len(price_bins)), np.nan)
-
-    for (v, p, h, w), q_vals in Q.items():
-        if h == fixed_hour and w == fixed_weekday:
-            i = volume_bins.index(v)
-            j = price_bins.index(p)
-            heatmap[i, j] = np.argmax(q_vals)
-
-    # discrete colormap for actions
-    cmap = ListedColormap(["tab:blue", "tab:gray", "tab:green"])
-    norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
-
-    plt.figure(figsize=(6, 5))
-    im = plt.imshow(
-        heatmap,
-        origin="lower",
-        aspect="auto",
-        cmap=cmap,
-        norm=norm
-    )
-    # X-axis: price bins (semantic labels)
-    plt.xticks(
-        ticks=range(len(price_bins)),
-        labels=["Very low", "Low", "High", "Very high"]
+    _setup_heatmap_axes(
+        price_bins,
+        volume_bins,
+        PRICE_BINS,
+        xlabel="Electricity price (EUR/MWh)",
+        ylabel="Reservoir level (%)",
+        title=title,
     )
 
-    # Y-axis: volume bins (semantic labels)
-    plt.yticks(
-        ticks=range(len(volume_bins)),
-        labels=["Empty", "Low", "Medium", "High", "Full"]
-    )
-
-    cbar = plt.colorbar(im, ticks=[0, 1, 2])
-    cbar.ax.set_yticklabels(["Release", "Hold", "Pump"])
-
-    plt.xlabel("Electricity price regime")
-    plt.ylabel("Reservoir storage regime")
-
-    plt.title(title)
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, filename), dpi=200)
     plt.close()
 
 
-def plot_state_visitation_heatmap(
-    visited_states,
-    fixed_hour,
-    fixed_weekday,
+# =========================
+# Policy heatmap
+# =========================
+
+def plot_policy_heatmap(
+    Q,
+    PRICE_BINS,
     out_dir,
     filename,
     title,
 ):
     """
-    Heatmap of state visitation counts
-    for fixed (hour, weekday), over (volume_bin, price_bin).
+    Heatmap of dominant action per (volume, price),
+    averaged over time.
     """
 
     os.makedirs(out_dir, exist_ok=True)
 
-    volume_bins = sorted({s[0] for s in visited_states})
-    price_bins = sorted({s[1] for s in visited_states})
+    from collections import defaultdict
 
-    heatmap = np.zeros((len(volume_bins), len(price_bins)))
+    action_counts = defaultdict(lambda: np.zeros(3))
 
-    for (v, p, h, w) in visited_states:
-        if h == fixed_hour and w == fixed_weekday:
-            i = volume_bins.index(v)
-            j = price_bins.index(p)
-            heatmap[i, j] += 1
+    # Count best actions
+    for (v, p, h, w), q_vals in Q.items():
 
+        key = (v, p)
+
+        best_a = np.argmax(q_vals)
+
+        action_counts[key][best_a] += 1
+
+    volume_bins = sorted({k[0] for k in action_counts})
+    price_bins = sorted({k[1] for k in action_counts})
+
+    heatmap = np.full(
+        (len(volume_bins), len(price_bins)),
+        np.nan
+    )
+
+    for (v, p), acts in action_counts.items():
+
+        i = volume_bins.index(v)
+        j = price_bins.index(p)
+
+        heatmap[i, j] = np.argmax(acts)
+
+    cmap = ListedColormap(["tab:blue", "tab:gray", "tab:green"])
+    norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5], cmap.N)
+
+    # Plot
     plt.figure(figsize=(6, 5))
+
     im = plt.imshow(
         heatmap,
         origin="lower",
-        aspect="auto"
+        aspect="auto",
+        cmap=cmap,
+        norm=norm,
     )
-    plt.colorbar(im, label="Visit count")
-    plt.xlabel("Price bin")
-    plt.ylabel("Volume bin")
-    plt.title(title)
-    plt.xticks(range(len(price_bins)), price_bins)
-    plt.yticks(range(len(volume_bins)), volume_bins)
+
+    cbar = plt.colorbar(im, ticks=[0, 1, 2])
+    cbar.ax.set_yticklabels(["Release", "Hold", "Pump"])
+
+    _setup_heatmap_axes(
+        price_bins,
+        volume_bins,
+        PRICE_BINS,
+        xlabel="Electricity price (EUR/MWh)",
+        ylabel="Reservoir level (%)",
+        title=title,
+    )
 
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, filename))
+    plt.savefig(os.path.join(out_dir, filename), dpi=200)
     plt.close()
+
+
+# =========================
+# State visitation heatmap
+# =========================
+
+def plot_state_visitation_heatmap(
+    visited_states,
+    PRICE_BINS,
+    out_dir,
+    filename,
+    title,
+):
+    """
+    Heatmap of visitation counts over (volume, price),
+    aggregated over time.
+    """
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    from collections import defaultdict
+
+    counts = defaultdict(int)
+
+    for (v, p, h, w) in visited_states:
+
+        key = (v, p)
+        counts[key] += 1
+
+    volume_bins = sorted({k[0] for k in counts})
+    price_bins = sorted({k[1] for k in counts})
+
+    heatmap = np.zeros(
+        (len(volume_bins), len(price_bins))
+    )
+
+    for (v, p), c in counts.items():
+
+        i = volume_bins.index(v)
+        j = price_bins.index(p)
+
+        heatmap[i, j] = c
+
+    # Plot
+    plt.figure(figsize=(6, 5))
+
+    im = plt.imshow(heatmap, origin="lower", aspect="auto")
+    plt.colorbar(im, label="Visit count")
+
+    _setup_heatmap_axes(
+        price_bins,
+        volume_bins,
+        PRICE_BINS,
+        xlabel="Electricity price (EUR/MWh)",
+        ylabel="Reservoir level (%)",
+        title=title,
+    )
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, filename), dpi=200)
+    plt.close()
+

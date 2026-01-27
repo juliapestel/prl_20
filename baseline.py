@@ -64,6 +64,13 @@ class BaselinePolicy:
         self.weekday_hour_mean = weekday_hour_mean
         self.dayofyear_mean = dayofyear_mean
 
+    def discretize(self, observation):
+        """
+        Dummy discretize function for compatibility
+        with evaluate_policy.
+        """
+        return observation
+
     def act(self, observation):
         """
         observation =

@@ -146,7 +146,7 @@ class LinearQPolicy:
                 # L2 regularisatie / weight decay
                 self.W[a_idx] += self.alpha * ((td_error * phi) - self.l2 * self.W[a_idx])
 
-
+ 
                 # carry forward WITHOUT recomputing for the same obs
                 obs = next_obs
                 phi = phi_next
