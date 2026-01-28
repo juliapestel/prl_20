@@ -1,11 +1,12 @@
 import os
 import numpy as np
 import pandas as pd
-
+import matplotlib.pyplot as plt
 from TestEnv import HydroElectric_Test
 from agents.agent_qlearning import QLearningPolicy
 from helpers.obs_utils import parse_observation
 from helpers.eval_utils import evaluate_policy
+from collections import defaultdict
 from helpers.plot_functions import (
     plot_cumulative_profit,
     plot_dam_level,
@@ -16,6 +17,12 @@ from helpers.plot_functions import (
     plot_state_visitation_heatmap
 )
 # extractor = FeatureExtractorCont(max_volume=MAX_VOLUME)
+def compute_price_bins(prices, n_bins=5):
+    """
+    Compute price bins based on quantiles of the given prices.
+    Returns an array of bin edges.
+    """
+    return np.quantile(prices, np.linspace(0, 1, n_bins + 1)[1:-1])
 
 QT_DIR = "qtables"
 os.makedirs(QT_DIR, exist_ok=True)
@@ -27,7 +34,7 @@ IMG_DIR = os.path.join(img_root, alg_name)
 
 MAX_VOLUME = 100_000  # m3
 
-N_EPISODES = 200
+N_EPISODES = 150
 ALPHA = 0.1
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -59,61 +66,49 @@ PRICE_BINS = np.quantile(train_long["Price"],
 
 # extractor = FeatureExtractor(max_volume=MAX_VOLUME)
 
-def discretize_observation(observation):
-    """
-    Feature-engineered discretisation using ONLY available env features.
-    Fully compatible with existing plots & env.
-    """
+
+def discretize_observation(observation, price_bins=None):
     obs = parse_observation(observation)
 
-  
-    N_VOL_BINS = 8
+    if price_bins is None:
+        raise ValueError("price_bins cannot be None. Generate them from your dataset!")
 
-    volume_bin = int(
-        np.clip(
-            obs["volume"] / MAX_VOLUME * N_VOL_BINS,
-            0,
-            N_VOL_BINS - 1
-        )
-    )
+    # Volume bins
+    volume_bin = int(np.clip(obs["volume"] / MAX_VOLUME * 8, 0, 7))
 
-    price_bin = int(np.digitize(obs["price"], PRICE_BINS))
+    # Price bins
+    price_bin = int(np.digitize(obs["price"], price_bins))
+    price_extreme = 0 if price_bin <= 1 else 2 if price_bin >= 4 else 1
 
-    if price_bin == 0:
-        price_extreme = 0      # very low
-    elif price_bin == 3:
-        price_extreme = 2      # very high
-    else:
-        price_extreme = 1      # mid
+    # Hour group
+    hour_group = (obs["hour"] - 1) * 4 // 24
 
-
-    # h = obs["hour"]
-    # if h <= 6:
-    #     hour_group = 0         # night
-    # elif h <= 12:
-    #     hour_group = 1         # morning
-    # elif h <= 18:
-    #     hour_group = 2         # afternoon
-    # else:
-    #     hour_group = 3         # evening
-
+    # Weekday
     weekday_bin = obs["weekday"]
-    hour_bin = obs["hour"] - 1
+
+    return (volume_bin, price_extreme, hour_group, weekday_bin)
 
 
-    return (
-        volume_bin,
-        price_bin,
-        # price_extreme,
-        # hour_group,
-        hour_bin,
-        weekday_bin,
-    )
+
 
 def make_agent(train=False):
+    # --- Laad training data ---
+    train_df = pd.read_excel("train.xlsx").rename(columns={"PRICES": "Date"})
+    train_df["Date"] = pd.to_datetime(train_df["Date"])
+    HOUR_COLS = [f"Hour {h:02d}" for h in range(1, 25)]
+    train_long = train_df.melt(
+        id_vars=["Date"],
+        value_vars=HOUR_COLS,
+        var_name="Hour",
+        value_name="Price"
+    )
 
+    # --- Dynamische price bins ---
+    price_bins = compute_price_bins(train_long["Price"].values, n_bins=5)
+
+    # --- Maak agent ---
     agent = QLearningPolicy(
-        discretize_fn=discretize_observation,
+        discretize_fn=lambda obs: discretize_observation(obs, price_bins=price_bins),
         actions=ACTIONS,
         n_actions=N_ACTIONS,
         alpha=ALPHA,
@@ -128,127 +123,68 @@ def make_agent(train=False):
 
     MODEL_PATH = os.path.join(QT_DIR, "qtable_features.npy")
 
-
-    # Auto-train if needed
+    # --- Train of load model ---
     if train or not os.path.exists(MODEL_PATH):
-
         print("[Feature Q] Training model...")
         agent.train()
-
         np.save(MODEL_PATH, dict(agent.Q))
         print(f"[Feature Q] Saved model to {MODEL_PATH}")
-
     else:
-
         print(f"[Feature Q] Loading model from {MODEL_PATH}")
-        agent.Q.update(
-            np.load(MODEL_PATH, allow_pickle=True).item()
-        )
+        agent.Q.update(np.load(MODEL_PATH, allow_pickle=True).item())
 
-    # Pure exploitation for eval
     agent.epsilon = 0.0
-
-    return agent
-
+    return agent, price_bins
 
 
+def linearize_qtable(agent, visited_states, price_bins):
+    """
+    Convert feature-based Q table to a pseudo Q-table for plotting.
+    """
+    Q_plot = defaultdict(lambda: np.zeros(len(ACTIONS)))
 
+    counts = defaultdict(int)
 
+    for obs in visited_states:
+        # Discrete state volgens dezelfde logica als tijdens training
+        state = discretize_observation(obs, price_bins)
+        q_vals = agent.Q[state]
+        Q_plot[state] += q_vals
+        counts[state] += 1
 
+    for state in Q_plot:
+        Q_plot[state] /= counts[state]
 
-# def reduce_Q_for_plotting(Q):
+    return dict(Q_plot)
 
-#     from collections import defaultdict
+# agent en price bins ophalen
+policy, price_bins = make_agent(train=False)
 
-#     Q_reduced = defaultdict(lambda: np.zeros(len(ACTIONS)))
-#     counts = defaultdict(int)
+# validate
+env = HydroElectric_Test(path_to_test_data="validate.xlsx")
+results = evaluate_policy(env, policy)
 
-#     for state, q_vals in Q.items():
+profit = results["cum_rewards"][-1]
 
-#         # state is now (v, p, h, w)
-#         v, p, h, w = state
+# build pseudo Q-table
+Q_plot = linearize_qtable(policy, results["visited_states"], price_bins)
 
-#         key = (v, p, h, w)
+# zorg dat map bestaat
+alg_name = "qlearning_features"
+IMG_DIR = os.path.join(os.path.dirname(__file__), "img", alg_name)
+os.makedirs(IMG_DIR, exist_ok=True)
 
-#         Q_reduced[key] += q_vals
-#         counts[key] += 1
-
-#     for key in Q_reduced:
-#         Q_reduced[key] /= counts[key]
-
-#     return dict(Q_reduced)
-
-
-# precies hetzelfde als normale tabular qlearning maar dan andere nam voor plotjes
-if __name__ == "__main__":
-
-    os.makedirs(IMG_DIR, exist_ok=True)
-
-    # train agent
-    policy = make_agent(train=False)
-
-
-    # validate
-    env = HydroElectric_Test(path_to_test_data="validate.xlsx")
-    results = evaluate_policy(env, policy)
-
-    total_profit = results["cum_rewards"][-1]
-    print(f"Validation total profit ({alg_name}): {total_profit:.2f} EUR")
-
-    # plots
-    plot_cumulative_profit(
-        results["cum_rewards"],
-        IMG_DIR,
-        "featql_cumulative_profit.png",
-        "Q-learning: cumulative profit (validation)"
-    )
-
-    plot_dam_level(
-        results["dam_levels"],
-        IMG_DIR,
-        "featql_dam_level.png",
-        "Q-learning: dam level over time"
-    )
-
-    plot_action_vs_price(
-        results["prices"],
-        results["actions"],
-        IMG_DIR,
-        "featql_action_vs_price.png",
-        "Q-learning: action vs price"
-    )
-
-    plot_mean_action_by_hour(
-        results["actions"],
-        IMG_DIR,
-        "featql_mean_action_by_hour.png",
-        "Q-learning: mean action by hour"
-    )
+# plots
+plot_cumulative_profit(results["cum_rewards"], IMG_DIR, "ftr_cumulative_profit.png",
+                           "Linear Q-learning: cumulative profit (validation)")
     
-    plot_q_value_heatmap(
-        policy.Q,
-        PRICE_BINS,
-        out_dir=IMG_DIR,
-        filename="featql_q_value_heatmap.png",
-        title="Feature Q-learning: value heatmap (averaged over time)"
-    )
 
-    plot_policy_heatmap(
-        policy.Q,
-        PRICE_BINS,
-        out_dir=IMG_DIR,
-        filename="featql_policy_heatmap.png",
-        title="Feature Q-learning: policy heatmap (averaged over time)"
-    )
-
-    plot_state_visitation_heatmap(
-        results["visited_states"],
-        PRICE_BINS,
-        out_dir=IMG_DIR,
-        filename="featql_state_visits.png",
-        title="Q-learning: state visitation"
-    )
-
+plot_dam_level(results["dam_levels"], IMG_DIR, "ftr_dam_level.png",
+                   "Linear Q-learning: dam level over time")
+plot_action_vs_price(results["prices"], results["actions"], IMG_DIR, "ftr_action_vs_price.png",
+                         "Linear Q-learning: action vs price")
+plot_mean_action_by_hour(results["actions"], IMG_DIR, "ftr_mean_action_by_hour.png",
+                             "Linear Q-learning: mean action by hour")
 
 
 def load_agent():
@@ -256,5 +192,5 @@ def load_agent():
     Entry point for graders.
     Trains and returns a Q-learning agent.
     """
-    return make_agent(train=False)
+    return make_agent(train=True)
 

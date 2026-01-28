@@ -3,21 +3,21 @@ import argparse
 import matplotlib.pyplot as plt
 
 # from baseline import make_agent
-# from qlearning_features import make_agent
-from linearq_features import make_agent
+from qlearning_features import make_agent
+# from linearq_features import make_agent
 parser = argparse.ArgumentParser()
 parser.add_argument('--excel_file', type=str, default='validate.xlsx')
 args = parser.parse_args()
 
 env = HydroElectric_Test(path_to_test_data=args.excel_file)
-agent = make_agent(train=True)   
+agent, price_bins = make_agent(train=True)   
 
 
 total_reward = []
 cumulative_reward = []
 
 observation = env.observation()
-if hasattr(agent, "feature_fn") and hasattr(agent.feature_fn, "reset"):
+if hasattr(agent, "discretize_fn") and hasattr(agent.feature_fn, "reset"):
     agent.feature_fn.reset()
 
 for _ in range(730 * 24 - 1):

@@ -109,7 +109,7 @@ def plot_mean_action_by_hour(actions, out_dir, filename, title):
 def _make_price_labels(price_bins):
     """
     Generate readable labels from price quantiles.
-    """
+    """  
     labels = []
 
     labels.append(f"<{price_bins[0]:.0f}")
