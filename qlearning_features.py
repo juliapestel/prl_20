@@ -18,18 +18,8 @@ from helpers.plot_functions import (
 )
 
 
-# =====================================================
-# Quick-fix heatmaps for feature-based Q-learning
-# (volume_bin, price_extreme, hour_group, weekday)
-# =====================================================
-
 from collections import defaultdict
 from matplotlib.colors import ListedColormap, BoundaryNorm
-
-
-# -----------------------------
-# Labels
-# -----------------------------
 
 def _price_labels_extreme():
     return ["Low", "Medium", "High"]
@@ -59,10 +49,6 @@ def _setup_axes(volume_bins, price_bins, title):
     plt.title(title)
 
 
-# =====================================================
-# 1) State visitation heatmap
-# =====================================================
-
 def plot_state_visitation_heatmap_features(
     visited_states,
     price_bins,
@@ -75,7 +61,7 @@ def plot_state_visitation_heatmap_features(
 
     counts = defaultdict(int)
 
-    # Discretize observations here
+    # Discretize observations 
     for obs in visited_states:
 
         v, p, h, w = discretize_observation(obs, price_bins)
@@ -112,9 +98,6 @@ def plot_state_visitation_heatmap_features(
     plt.close()
 
 
-# =====================================================
-# 2) Value function heatmap (V = max Q)
-# =====================================================
 
 def plot_value_heatmap_features(
     Q,
@@ -169,10 +152,6 @@ def plot_value_heatmap_features(
     plt.savefig(os.path.join(out_dir, filename), dpi=200)
     plt.close()
 
-
-# =====================================================
-# 3) Policy heatmap (dominant action)
-# =====================================================
 
 def plot_policy_heatmap_features(
     Q,
@@ -314,7 +293,7 @@ def discretize_observation(observation, price_bins=None):
 
 
 def make_agent(train=False):
-    # --- Laad training data ---
+
     train_df = pd.read_excel("train.xlsx").rename(columns={"PRICES": "Date"})
     train_df["Date"] = pd.to_datetime(train_df["Date"])
     HOUR_COLS = [f"Hour {h:02d}" for h in range(1, 25)]
@@ -325,10 +304,9 @@ def make_agent(train=False):
         value_name="Price"
     )
 
-    # --- Dynamische price bins ---
+
     price_bins = compute_price_bins(train_long["Price"].values, n_bins=5)
 
-    # --- Maak agent ---
     agent = QLearningPolicy(
         discretize_fn=lambda obs: discretize_observation(obs, price_bins=price_bins),
         actions=ACTIONS,
@@ -345,7 +323,7 @@ def make_agent(train=False):
 
     MODEL_PATH = os.path.join(QT_DIR, "qtable_features.npy")
 
-    # --- Train of load model ---
+
     if train or not os.path.exists(MODEL_PATH):
         print("[Feature Q] Training model...")
         agent.train()
@@ -356,7 +334,7 @@ def make_agent(train=False):
         agent.Q.update(np.load(MODEL_PATH, allow_pickle=True).item())
 
     agent.epsilon = 0.0
-    agent.price_bins = price_bins   # attach for later plotting
+    agent.price_bins = price_bins  
     return agent
 
 
@@ -395,7 +373,7 @@ profit = results["cum_rewards"][-1]
 # build pseudo Q-table
 Q_plot = linearize_qtable(policy, results["visited_states"], price_bins)
  
-# zorg dat map bestaat
+
 alg_name = "qlearning_features"
 IMG_DIR = os.path.join(os.path.dirname(__file__), "img", alg_name)
 os.makedirs(IMG_DIR, exist_ok=True)
@@ -414,10 +392,6 @@ plot_mean_action_by_hour(results["actions"], IMG_DIR, "ftr_mean_action_by_hour.p
 
 
 
-
-# =====================================================
-# Feature-based heatmaps
-# =====================================================
 
 plot_state_visitation_heatmap_features(
     results["visited_states"],

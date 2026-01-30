@@ -106,11 +106,11 @@ class LinearQPolicy:
             if hasattr(self.feature_fn, "reset"):
                 self.feature_fn.reset()
 
-            # first observation + features (compute ONCE)
+
             obs = env.observation()
             phi = self.feature_fn(obs)
 
-            # accumulate episode reward for logging
+
             ep_reward = 0.0
 
             for _t in range(max_steps):
@@ -127,7 +127,7 @@ class LinearQPolicy:
                 next_obs, reward, terminated, truncated, _info = env.step(action)
                 done = bool(terminated or truncated)
 
-                # next features (compute ONCE)
+                # next features 
                 phi_next = self.feature_fn(next_obs)
 
                 # TD target
@@ -146,18 +146,17 @@ class LinearQPolicy:
                 # L2 regularisatie / weight decay
                 self.W[a_idx] += self.alpha * ((td_error * phi) - self.l2 * self.W[a_idx])
 
- 
-                # carry forward WITHOUT recomputing for the same obs
+
                 obs = next_obs
                 phi = phi_next
 
                 if done:
                     break
 
-            # print episode summary
+
             print(f"Episode {_ep:4d} | reward: {ep_reward: .4f} | epsilon: {self.epsilon: .3f}")
 
-            # epsilon decay per episode
+
             self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
 
         return self

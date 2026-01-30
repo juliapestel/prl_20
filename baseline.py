@@ -105,48 +105,6 @@ def make_agent():
     return BaselinePolicy(weekday_hour_mean, dayofyear_mean)
 
 
-# def run_and_plot():
-
-#     os.makedirs(IMG_DIR, exist_ok=True)
-
-#     env = HydroElectric_Test(path_to_test_data="validate.xlsx")
-#     policy = make_agent()
-
-#     results = evaluate_policy(env, policy)
-
-#     plot_cumulative_profit(
-#         results["cum_rewards"],
-#         IMG_DIR,
-#         "cumulative_profit.png",
-#         "Baseline: cumulative profit (validation)"
-#     )
-
-#     plot_dam_level(
-#         results["dam_levels"],
-#         IMG_DIR,
-#         "dam_level.png",
-#         "Baseline: dam level over time"
-#     )
-
-#     plot_action_vs_price(
-#         results["prices"],
-#         results["actions"],
-#         IMG_DIR,
-#         "action_vs_price.png",
-#         "Baseline: action vs price"
-#     )
-
-#     plot_mean_action_by_hour(
-#         results["actions"],
-#         IMG_DIR,
-#         "mean_action_by_hour.png",
-#         "Baseline: mean action by hour"
-#     )
-
-# # if __name__ == "__main__":
-# #     run_and_plot()
-
-
 
 if __name__ == "__main__":
 

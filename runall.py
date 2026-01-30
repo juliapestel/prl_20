@@ -22,9 +22,6 @@ SEED = 42
 np.random.seed(SEED)
 
 
-# -----------------------
-# RUNNER
-# -----------------------
 
 def run_agent(name, make_agent_fn, train=False):
     """
@@ -74,7 +71,7 @@ def main():
     ql_res = run_agent(
         "Tabular Q-learning",
         make_qlearning,
-        train=False   # trains internally
+        train=False   
     )
     all_results.append(ql_res)
 
@@ -82,7 +79,7 @@ def main():
     feat_res = run_agent(
         "Feature Q-learning",
         make_feat_qlearning,
-        train=False  # loads trained model
+        train=False 
     )
     all_results.append(feat_res)
 
@@ -90,7 +87,7 @@ def main():
     linear_res = run_agent(
         "Linear Q-learning",
         make_linear,
-        train=False   # loads trained weights
+        train=False  
     )
     all_results.append(linear_res)
 
