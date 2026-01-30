@@ -1,3 +1,4 @@
+# tabular qlearning
 import os
 import numpy as np
 import pandas as pd
@@ -132,36 +133,27 @@ def make_agent(train=False):
     return agent
 
 
-# =====================
-# MAIN (validation + plots)
-# =====================
-if __name__ == "__main__":
+def run_and_plot():
 
     os.makedirs(IMG_DIR, exist_ok=True)
 
-    # train agent
     policy = make_agent(train=False)
 
-    # validate
     env = HydroElectric_Test(path_to_test_data="validate.xlsx")
     results = evaluate_policy(env, policy)
 
-    total_profit = results["cum_rewards"][-1]
-    print(f"Validation total profit ({alg_name}): {total_profit:.2f} EUR")
-
-    # plots
     plot_cumulative_profit(
         results["cum_rewards"],
         IMG_DIR,
         "ql_cumulative_profit.png",
-        "Q-learning: cumulative profit (validation)"
+        "Q-learning: cumulative profit"
     )
 
     plot_dam_level(
         results["dam_levels"],
         IMG_DIR,
         "ql_dam_level.png",
-        "Q-learning: dam level over time"
+        "Q-learning: dam level"
     )
 
     plot_action_vs_price(
@@ -176,28 +168,33 @@ if __name__ == "__main__":
         results["actions"],
         IMG_DIR,
         "ql_mean_action_by_hour.png",
-        "Q-learning: mean action by hour"
+        "Q-learning: mean action"
     )
 
     plot_q_value_heatmap(
         policy.Q,
         PRICE_BINS,
-        out_dir=IMG_DIR,
-        filename="ql_q_value_heatmap.png",
-        title="Q-learning: value heatmap (averaged over time)"
+        IMG_DIR,
+        "ql_q_value_heatmap.png",
+        "Q-learning: value heatmap"
     )
-
 
     plot_policy_heatmap(
         policy.Q,
         PRICE_BINS,
-        out_dir=IMG_DIR,
-        filename="ql_policy_heatmap.png",
-        title="Q-learning: policy heatmap (averaged over time)"
+        IMG_DIR,
+        "ql_policy_heatmap.png",
+        "Q-learning: policy heatmap"
     )
-    
+
+    # Discretize visited states first
+    visited_discrete = [
+        discretize_observation(obs)
+        for obs in results["visited_states"]
+    ]
+
     plot_state_visitation_heatmap(
-        results["visited_states"],
+        visited_discrete,
         PRICE_BINS,
         out_dir=IMG_DIR,
         filename="ql_state_visits.png",
@@ -206,9 +203,87 @@ if __name__ == "__main__":
 
 
 
-def load_agent():
-    """
-    Entry point for graders.
-    Trains and returns a Q-learning agent.
-    """
-    return make_agent(train=False)
+# # =====================
+# # MAIN (validation + plots)
+# # =====================
+# if __name__ == "__main__":
+
+#     os.makedirs(IMG_DIR, exist_ok=True)
+
+#     # train agent
+#     policy = make_agent(train=False)
+
+#     # validate
+#     env = HydroElectric_Test(path_to_test_data="validate.xlsx")
+#     results = evaluate_policy(env, policy)
+
+#     total_profit = results["cum_rewards"][-1]
+#     print(f"Validation total profit ({alg_name}): {total_profit:.2f} EUR")
+
+#     # plots
+#     plot_cumulative_profit(
+#         results["cum_rewards"],
+#         IMG_DIR,
+#         "ql_cumulative_profit.png",
+#         "Q-learning: cumulative profit (validation)"
+#     )
+
+#     plot_dam_level(
+#         results["dam_levels"],
+#         IMG_DIR,
+#         "ql_dam_level.png",
+#         "Q-learning: dam level over time"
+#     )
+
+#     plot_action_vs_price(
+#         results["prices"],
+#         results["actions"],
+#         IMG_DIR,
+#         "ql_action_vs_price.png",
+#         "Q-learning: action vs price"
+#     )
+
+#     plot_mean_action_by_hour(
+#         results["actions"],
+#         IMG_DIR,
+#         "ql_mean_action_by_hour.png",
+#         "Q-learning: mean action by hour"
+#     )
+
+#     plot_q_value_heatmap(
+#         policy.Q,
+#         PRICE_BINS,
+#         out_dir=IMG_DIR,
+#         filename="ql_q_value_heatmap.png",
+#         title="Q-learning: value heatmap (averaged over time)"
+#     )
+
+
+#     plot_policy_heatmap(
+#         policy.Q,
+#         PRICE_BINS,
+#         out_dir=IMG_DIR,
+#         filename="ql_policy_heatmap.png",
+#         title="Q-learning: policy heatmap (averaged over time)"
+#     )
+    
+#     plot_state_visitation_heatmap(
+#         results["visited_states"],
+#         PRICE_BINS,
+#         out_dir=IMG_DIR,
+#         filename="ql_state_visits.png",
+#         title="Q-learning: state visitation"
+#     )
+
+
+
+# def load_agent():
+#     """
+#     Entry point for graders.
+#     Trains and returns a Q-learning agent.
+#     """
+#     return make_agent(train=False)
+
+
+if __name__ == "__main__":
+    run_and_plot()

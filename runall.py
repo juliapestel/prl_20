@@ -15,10 +15,6 @@ from linearq_features import make_agent as make_linear
 
 
 
-# -----------------------
-# CONFIG
-# -----------------------
-
 VALIDATION_FILE = "validate.xlsx"
 OUT_DIR = "img/comparison"
 SEED = 42
@@ -61,19 +57,12 @@ def run_agent(name, make_agent_fn, train=False):
     }
 
 
-# -----------------------
-# MAIN
-# -----------------------
 
 def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
-
     all_results = []
 
-    # -------------------
-    # Baseline 
-    # -------------------
     baseline_res = run_agent(
         "Baseline",
         make_baseline,
@@ -81,9 +70,7 @@ def main():
     )
     all_results.append(baseline_res)
 
-    # -------------------
-    # Tabular Q-learning
-    # -------------------
+
     ql_res = run_agent(
         "Tabular Q-learning",
         make_qlearning,
@@ -91,9 +78,7 @@ def main():
     )
     all_results.append(ql_res)
 
-    # -------------------
-    # Feature Q-learning
-    # -------------------
+
     feat_res = run_agent(
         "Feature Q-learning",
         make_feat_qlearning,
@@ -101,9 +86,7 @@ def main():
     )
     all_results.append(feat_res)
 
-    # -------------------
-    # Linear Q-learning
-    # -------------------
+
     linear_res = run_agent(
         "Linear Q-learning",
         make_linear,
@@ -111,10 +94,6 @@ def main():
     )
     all_results.append(linear_res)
 
-
-    # -------------------
-    # Plot comparison
-    # -------------------
 
     plt.figure(figsize=(8, 4))
 
@@ -137,10 +116,6 @@ def main():
     plt.close()
 
     print(f"\nSaved comparison plot to: {out_path}")
-
-    # -------------------
-    # Print table
-    # -------------------
 
     print("\n=== FINAL COMPARISON ===\n")
 

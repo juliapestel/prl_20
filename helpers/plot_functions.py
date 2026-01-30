@@ -102,10 +102,6 @@ def plot_mean_action_by_hour(actions, out_dir, filename, title):
     plt.close()
 
 
-# =========================
-# Helper functions
-# =========================
-
 def _make_price_labels(price_bins):
     """
     Generate readable labels from price quantiles.
@@ -160,7 +156,6 @@ def _setup_heatmap_axes(
 # =========================
 # Q-value heatmap
 # =========================
-
 def plot_q_value_heatmap(
     Q,
     PRICE_BINS,
@@ -225,7 +220,6 @@ def plot_q_value_heatmap(
 # =========================
 # Policy heatmap
 # =========================
-
 def plot_policy_heatmap(
     Q,
     PRICE_BINS,
@@ -302,7 +296,6 @@ def plot_policy_heatmap(
 # =========================
 # State visitation heatmap
 # =========================
-
 def plot_state_visitation_heatmap(
     visited_states,
     PRICE_BINS,

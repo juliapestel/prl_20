@@ -57,7 +57,7 @@ python3 main.py --excel_file validate.xlsx
 
 This command:
 - loads the validation data,
-- runs the selected agent,
+- runs the selected agent (Linear Q Learning),
 - prints the total cumulative reward,
 - plots the cumulative reward over time.
 

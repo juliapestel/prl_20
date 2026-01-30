@@ -32,9 +32,7 @@ N_VOL_BINS = 8
 
 ACTIONS = {0: -1.0, 1: 0.0, 2: 1.0}
 
-# =====================
-# LOAD TRAIN DATA
-# =====================
+
 train = pd.read_excel("train.xlsx").rename(columns={"PRICES": "Date"})
 train["Date"] = pd.to_datetime(train["Date"])
 
@@ -55,9 +53,7 @@ PRICE_BINS = np.quantile(
 # feature extractor
 extractor = FeatureExtractorCont(max_volume=MAX_VOLUME)
 
-# =====================
-# DISCRETIZE (for plotting)
-# =====================
+
 def discretize_for_plot(observation):
 
     obs = parse_observation(observation)
@@ -141,9 +137,6 @@ def make_agent(train=False):
 
     return agent
 
-# =====================
-# MAIN
-# =====================
 
 if __name__ == "__main__":
 
@@ -212,3 +205,4 @@ if __name__ == "__main__":
 
 def load_agent():
     return make_agent(train=False)
+

@@ -16,6 +16,228 @@ from helpers.plot_functions import (
     plot_policy_heatmap,
     plot_state_visitation_heatmap
 )
+
+
+# =====================================================
+# Quick-fix heatmaps for feature-based Q-learning
+# (volume_bin, price_extreme, hour_group, weekday)
+# =====================================================
+
+from collections import defaultdict
+from matplotlib.colors import ListedColormap, BoundaryNorm
+
+
+# -----------------------------
+# Labels
+# -----------------------------
+
+def _price_labels_extreme():
+    return ["Low", "Medium", "High"]
+
+
+def _volume_labels(n_bins):
+    return [
+        f"{int(100*i/n_bins)}–{int(100*(i+1)/n_bins)}%"
+        for i in range(n_bins)
+    ]
+
+
+def _setup_axes(volume_bins, price_bins, title):
+
+    plt.xticks(
+        range(len(price_bins)),
+        _price_labels_extreme()
+    )
+
+    plt.yticks(
+        range(len(volume_bins)),
+        _volume_labels(len(volume_bins))
+    )
+
+    plt.xlabel("Electricity price category")
+    plt.ylabel("Reservoir level (%)")
+    plt.title(title)
+
+
+# =====================================================
+# 1) State visitation heatmap
+# =====================================================
+
+def plot_state_visitation_heatmap_features(
+    visited_states,
+    price_bins,
+    out_dir,
+    filename,
+    title,
+):
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    counts = defaultdict(int)
+
+    # Discretize observations here
+    for obs in visited_states:
+
+        v, p, h, w = discretize_observation(obs, price_bins)
+
+        counts[(v, p)] += 1
+
+
+    volume_bins = sorted({k[0] for k in counts})
+    price_bins_plot = sorted({k[1] for k in counts})
+
+    heatmap = np.zeros((len(volume_bins), len(price_bins_plot)))
+
+    for (v, p), c in counts.items():
+
+        i = volume_bins.index(v)
+        j = price_bins_plot.index(p)
+
+        heatmap[i, j] = c
+
+    plt.figure(figsize=(6, 5))
+
+    im = plt.imshow(
+        heatmap,
+        origin="lower",
+        aspect="auto"
+    )
+
+    plt.colorbar(im, label="Visit count")
+
+    _setup_axes(volume_bins, price_bins_plot, title)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, filename), dpi=200)
+    plt.close()
+
+
+# =====================================================
+# 2) Value function heatmap (V = max Q)
+# =====================================================
+
+def plot_value_heatmap_features(
+    Q,
+    out_dir,
+    filename,
+    title,
+):
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    V_sum = defaultdict(float)
+    counts = defaultdict(int)
+
+    # Marginalize over time
+    for (v, p, h, w), q_vals in Q.items():
+
+        V = np.max(q_vals)
+
+        key = (v, p)
+
+        V_sum[key] += V
+        counts[key] += 1
+
+    volume_bins = sorted({k[0] for k in V_sum})
+    price_bins_plot = sorted({k[1] for k in V_sum})
+
+    heatmap = np.full(
+        (len(volume_bins), len(price_bins_plot)),
+        np.nan
+    )
+
+    for (v, p), val in V_sum.items():
+
+        i = volume_bins.index(v)
+        j = price_bins_plot.index(p)
+
+        heatmap[i, j] = val / counts[(v, p)]
+
+    plt.figure(figsize=(6, 5))
+
+    im = plt.imshow(
+        heatmap,
+        origin="lower",
+        aspect="auto"
+    )
+
+    plt.colorbar(im, label="Average V(s)")
+
+    _setup_axes(volume_bins, price_bins_plot, title)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, filename), dpi=200)
+    plt.close()
+
+
+# =====================================================
+# 3) Policy heatmap (dominant action)
+# =====================================================
+
+def plot_policy_heatmap_features(
+    Q,
+    out_dir,
+    filename,
+    title,
+):
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    action_counts = defaultdict(lambda: np.zeros(3))
+
+    for (v, p, h, w), q_vals in Q.items():
+
+        best_a = np.argmax(q_vals)
+
+        action_counts[(v, p)][best_a] += 1
+
+    volume_bins = sorted({k[0] for k in action_counts})
+    price_bins_plot = sorted({k[1] for k in action_counts})
+
+    heatmap = np.full(
+        (len(volume_bins), len(price_bins_plot)),
+        np.nan
+    )
+
+    for (v, p), acts in action_counts.items():
+
+        i = volume_bins.index(v)
+        j = price_bins_plot.index(p)
+
+        heatmap[i, j] = np.argmax(acts)
+
+    cmap = ListedColormap([
+        "tab:blue",   # Produce
+        "tab:gray",   # Idle
+        "tab:green",  # Pump
+    ])
+
+    norm = BoundaryNorm(
+        [-0.5, 0.5, 1.5, 2.5],
+        cmap.N
+    )
+
+    plt.figure(figsize=(6, 5))
+
+    im = plt.imshow(
+        heatmap,
+        origin="lower",
+        aspect="auto",
+        cmap=cmap,
+        norm=norm,
+    )
+
+    cbar = plt.colorbar(im, ticks=[0, 1, 2])
+    cbar.ax.set_yticklabels(["Produce", "Idle", "Pump"])
+
+    _setup_axes(volume_bins, price_bins_plot, title)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, filename), dpi=200)
+    plt.close()
+
+
+
 # extractor = FeatureExtractorCont(max_volume=MAX_VOLUME)
 def compute_price_bins(prices, n_bins=5):
     """
@@ -134,7 +356,9 @@ def make_agent(train=False):
         agent.Q.update(np.load(MODEL_PATH, allow_pickle=True).item())
 
     agent.epsilon = 0.0
-    return agent, price_bins
+    agent.price_bins = price_bins   # attach for later plotting
+    return agent
+
 
 
 def linearize_qtable(agent, visited_states, price_bins):
@@ -158,7 +382,9 @@ def linearize_qtable(agent, visited_states, price_bins):
     return dict(Q_plot)
 
 # agent en price bins ophalen
-policy, price_bins = make_agent(train=False)
+policy = make_agent(train=False)
+price_bins = policy.price_bins
+
 
 # validate
 env = HydroElectric_Test(path_to_test_data="validate.xlsx")
@@ -168,7 +394,7 @@ profit = results["cum_rewards"][-1]
 
 # build pseudo Q-table
 Q_plot = linearize_qtable(policy, results["visited_states"], price_bins)
-
+ 
 # zorg dat map bestaat
 alg_name = "qlearning_features"
 IMG_DIR = os.path.join(os.path.dirname(__file__), "img", alg_name)
@@ -187,10 +413,67 @@ plot_mean_action_by_hour(results["actions"], IMG_DIR, "ftr_mean_action_by_hour.p
                              "Linear Q-learning: mean action by hour")
 
 
-def load_agent():
-    """
-    Entry point for graders.
-    Trains and returns a Q-learning agent.
-    """
-    return make_agent(train=True)
 
+
+# =====================================================
+# Feature-based heatmaps
+# =====================================================
+
+plot_state_visitation_heatmap_features(
+    results["visited_states"],
+    price_bins,
+    IMG_DIR,
+    "ftr_state_visitation.png",
+    "Feature Q-learning: State visitation"
+)
+
+
+plot_value_heatmap_features(
+    Q_plot,
+    IMG_DIR,
+    "ftr_value_heatmap.png",
+    "Feature Q-learning: Value function"
+)
+
+
+plot_policy_heatmap_features(
+    Q_plot,
+    IMG_DIR,
+    "ftr_policy_heatmap.png",
+    "Feature Q-learning: Policy"
+)
+
+
+plot_cumulative_profit(
+    results["cum_rewards"],
+    IMG_DIR,
+    "ft_cumulative_profit.png",
+    "Feature Q: cumulative profit"
+)
+
+plot_dam_level(
+    results["dam_levels"],
+    IMG_DIR,
+    "ft_dam_level.png",
+    "Feature Q: dam level"
+)
+
+plot_action_vs_price(
+    results["prices"],
+    results["actions"],
+    IMG_DIR,
+    "ft_action_vs_price.png",
+    "Feature Q: action vs price"
+)
+
+plot_mean_action_by_hour(
+    results["actions"],
+    IMG_DIR,
+    "ft_mean_action_by_hour.png",
+    "Feature Q: mean action"
+)
+
+
+
+def load_agent():
+    return make_agent(train=True)
