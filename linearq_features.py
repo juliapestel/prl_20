@@ -103,12 +103,12 @@ def make_agent(train=False):
     agent = LinearQPolicy(
         feature_fn=extractor,
         actions=ACTIONS,
-        alpha=2e-4,
+        alpha=0.1,
         gamma=0.99,
         epsilon_start=1.0,
         epsilon_end=0.05,
         epsilon_decay=0.97,
-        n_episodes=200,
+        n_episodes=150,
         env_class=HydroElectric_Test,
         train_path="train.xlsx",
     )
